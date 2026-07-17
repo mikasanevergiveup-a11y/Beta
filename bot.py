@@ -36,9 +36,9 @@ DB_FILE = "user_database.json"
 #  CHANNEL CONFIGURATION
 # ============================================
 CHANNEL_1_ID = "@CandyHub_Ch"
-CHANNEL_2_ID = "@candyhubassistant"
+CHANNEL_2_ID = "@candyhubassisstant"
 CHANNEL_1_URL = "https://t.me/CandyHub_Ch"
-CHANNEL_2_URL = "https://t.me/candyhubassistant"
+CHANNEL_2_URL = "https://t.me/candyhubassisstant"
 
 # ============================================
 #  FLASK KEEP-ALIVE SERVER
