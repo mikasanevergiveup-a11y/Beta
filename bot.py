@@ -281,4 +281,4 @@ def process_screenshot(message):
 if __name__ == "__main__":
     print("Candy Hub Env-Based Bot စတင်လည်ပတ်နေပါပြီ...")
     bot.infinity_polling()
-
+        
