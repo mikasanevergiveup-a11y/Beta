@@ -11,13 +11,16 @@ from flask import Flask
 # ============================================
 #  ENVIRONMENT VARIABLES
 # ============================================
-BOT_TOKEN = "8842275295:AAE_zKGIGeWSiS2waVjWU9sCGGb0F_BVvxk"
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
 ADMIN_GROUP_ID_STR = os.environ.get("ADMIN_GROUP_ID")
-ADMIN_GROUP_ID = int(ADMIN_GROUP_ID_STR) if ADMIN_GROUP_ID_STR else -1002422128365
+ADMIN_GROUP_ID = int(ADMIN_GROUP_ID_STR) if ADMIN_GROUP_ID_STR else 0
 
 if not BOT_TOKEN:
-    print("❌ BOT_TOKEN မတွေ့ရှိပါ။")
+    print("❌ BOT_TOKEN မတွေ့ရှိပါ။ Environment Variable ကို စစ်ဆေးပါ။")
     exit(1)
+
+if not ADMIN_GROUP_ID:
+    print("⚠️ ADMIN_GROUP_ID မတွေ့ရှိပါ။ Admin Group ID ကို စစ်ဆေးပါ။")
 
 bot = telebot.TeleBot(BOT_TOKEN)
 DB_FILE = "user_database.json"
@@ -26,14 +29,14 @@ DB_FILE = "user_database.json"
 #  CHANNEL CONFIGURATION
 # ============================================
 CHANNEL_1_ID = "@CandyHub_Ch"
-CHANNEL_2_ID = "@candyhubassissiant"
+CHANNEL_2_ID = "@candyhubassistant"
 CHANNEL_1_URL = "https://t.me/CandyHub_Ch"
-CHANNEL_2_URL = "https://t.me/candyhubassissiant"
+CHANNEL_2_URL = "https://t.me/candyhubassistant"
 
 # ============================================
 #  FLASK KEEP-ALIVE SERVER
 # ============================================
-app = Flask('')
+app = Flask(__name__)
 
 @app.route('/')
 def home():
@@ -47,8 +50,8 @@ def ping_self():
     """Self-ping စနစ် - Render ရဲ့ sleep ကိုကာကွယ်ရန်"""
     url = os.environ.get("RENDER_EXTERNAL_URL")
     if not url:
-        url = "https://beta-no7j.onrender.com"
-        print(f"🔄 Using hardcoded URL: {url}")
+        print("⚠️ RENDER_EXTERNAL_URL မတွေ့ရှိပါ။ Self-ping ကို ခေတ္တပိတ်ထားပါသည်။")
+        return
     
     print(f"🔄 Self-ping စတင်ပါပြီ။ URL: {url}")
     while True:
@@ -60,7 +63,7 @@ def ping_self():
             print(f"🔴 Ping ပျက်ကွက်သည်: {e}")
 
 def run_flask():
-    port = int(os.environ.get("PORT", 8080))
+    port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port, debug=False, threaded=True)
 
 # ============================================
@@ -101,11 +104,13 @@ def can_submit_task(user_id):
     if not last_task:
         return True
     
-    last_time = datetime.fromisoformat(last_task)
-    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-    
-    if last_time >= today:
-        return False
+    try:
+        last_time = datetime.fromisoformat(last_task)
+        today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        if last_time >= today:
+            return False
+    except:
+        return True
     
     return True
 
@@ -156,197 +161,232 @@ def handle_callbacks(call):
     chat_id = call.message.chat.id
     db = load_db()
 
-    # ----- Check Channels -----
-    if call.data == "check_channels":
-        if check_status(call.from_user.id):
-            bot.answer_callback_query(call.id, "✅ ချန်နယ်များအားလုံး Join ပြီးပါပြီ။")
-            ask_email(call.message)
-        else:
-            bot.answer_callback_query(call.id, "❌ ချန်နယ် (၂) ခုလုံးကို မဝင်ရသေးပါဗျာ။", show_alert=True)
+    try:
+        # ----- Check Channels -----
+        if call.data == "check_channels":
+            if check_status(call.from_user.id):
+                bot.answer_callback_query(call.id, "✅ ချန်နယ်များအားလုံး Join ပြီးပါပြီ။")
+                ask_email(call.message)
+            else:
+                bot.answer_callback_query(call.id, "❌ ချန်နယ် (၂) ခုလုံးကို မဝင်ရသေးပါဗျာ။", show_alert=True)
 
-    # ----- Confirm Email -----
-    elif call.data.startswith("confirm_email_"):
-        parts = call.data.split("_")
-        choice = parts[2]
-        temp_email = "_".join(parts[3:])
-        
-        if choice == "yes":
-            db[user_id]["email"] = temp_email
-            save_db(db)
-            bot.edit_message_text(
-                f"🎉 **အီးမေးလ် အတည်ပြုသိမ်းဆည်းပြီးပါပြီ!**\n"
-                f"💾 Email: `{temp_email}`\n\n"
-                f"👉 `/profile` သို့မဟုတ် `/check` ဖြင့် Task များ စစ်ဆေးနိုင်ပါပြီ။",
-                chat_id, 
-                call.message.message_id, 
-                parse_mode="Markdown"
-            )
-        else:
-            bot.delete_message(chat_id, call.message.message_id)
-            msg = bot.send_message(chat_id, "ℹ️ အီးမေးလ်ကို ပြန်လည်ရေးသားပေးပါရန်။")
-            bot.register_next_step_handler(msg, process_email)
-
-    # ----- Task Verify -----
-    elif call.data.startswith("task_verify_"):
-        choice = call.data.split("_")[2]
-        if choice == "yes":
-            if not can_submit_task(user_id):
-                today_count = get_task_count_today(user_id)
-                bot.answer_callback_query(
-                    call.id, 
-                    f"⚠️ ဒီနေ့ task {today_count} ခါ တင်ပြီးပါပြီ။ မနက်ဖြန် ပြန်လာခဲ့ပါ။", 
-                    show_alert=True
-                )
-                return
+        # ----- Confirm Email -----
+        elif call.data.startswith("confirm_email_"):
+            parts = call.data.split("_")
+            choice = parts[2]
+            temp_email = "_".join(parts[3:])
             
-            bot.answer_callback_query(call.id, "🚀 သက်သေကို Admin ထံ ပေးပို့နေပါပြီ...")
-            
-            photo_id = db.get(user_id, {}).get("last_photo_id")
-            user_email = db.get(user_id, {}).get("email")
-            name = db.get(user_id, {}).get("name", call.from_user.first_name)
-            username = db.get(user_id, {}).get("username", "မရှိပါ")
-            
-            if not photo_id:
+            if choice == "yes":
+                db[user_id]["email"] = temp_email
+                save_db(db)
                 bot.edit_message_text(
-                    "❌ Screenshot မတွေ့ရှိပါ။ `/check` ဖြင့် ပြန်လည်စတင်ပါ။",
+                    f"🎉 **အီးမေးလ် အတည်ပြုသိမ်းဆည်းပြီးပါပြီ!**\n"
+                    f"💾 Email: `{temp_email}`\n\n"
+                    f"👉 `/profile` သို့မဟုတ် `/check` ဖြင့် Task များ စစ်ဆေးနိုင်ပါပြီ။",
+                    chat_id, 
+                    call.message.message_id, 
+                    parse_mode="Markdown"
+                )
+            else:
+                bot.delete_message(chat_id, call.message.message_id)
+                msg = bot.send_message(chat_id, "ℹ️ အီးမေးလ်ကို ပြန်လည်ရေးသားပေးပါရန်။")
+                bot.register_next_step_handler(msg, process_email)
+
+        # ----- Task Verify -----
+        elif call.data.startswith("task_verify_"):
+            choice = call.data.split("_")[2]
+            if choice == "yes":
+                if not can_submit_task(user_id):
+                    today_count = get_task_count_today(user_id)
+                    bot.answer_callback_query(
+                        call.id, 
+                        f"⚠️ ဒီနေ့ task {today_count} ခါ တင်ပြီးပါပြီ။ မနက်ဖြန် ပြန်လာခဲ့ပါ။", 
+                        show_alert=True
+                    )
+                    return
+                
+                bot.answer_callback_query(call.id, "🚀 သက်သေကို Admin ထံ ပေးပို့နေပါပြီ...")
+                
+                photo_id = db.get(user_id, {}).get("last_photo_id")
+                user_email = db.get(user_id, {}).get("email")
+                name = db.get(user_id, {}).get("name", call.from_user.first_name)
+                
+                if not photo_id:
+                    bot.edit_message_text(
+                        "❌ Screenshot မတွေ့ရှိပါ။ `/check` ဖြင့် ပြန်လည်စတင်ပါ။",
+                        chat_id, 
+                        call.message.message_id
+                    )
+                    return
+                
+                # 12-hour format အချိန်
+                current_time = datetime.now().strftime("%I:%M %p")
+                current_date = datetime.now().strftime("%Y-%m-%d")
+                
+                user_mention = f"[{name}](tg://user?id={user_id})"
+                
+                admin_caption = (
+                    f"📥 **Task စစ်ဆေးရန် တောင်းဆိုချက်**\n\n"
+                    f"👤 **Name:** {user_mention}\n"
+                    f"🆔 **ID:** `{user_id}`\n"
+                    f"📧 **Gmail:** `{user_email}`\n"
+                    f"⏰ **အချိန်:** {current_time} ({current_date})"
+                )
+                
+                admin_markup = types.InlineKeyboardMarkup(row_width=2)
+                btn_confirm = types.InlineKeyboardButton("✅ Confirm", callback_data=f"adm_confirm_{user_id}")
+                btn_reject = types.InlineKeyboardButton("❌ Reject", callback_data=f"adm_reject_{user_id}")
+                admin_markup.add(btn_confirm, btn_reject)
+                
+                try:
+                    # Admin group ကို photo ပို့
+                    bot.send_photo(ADMIN_GROUP_ID, photo_id, caption=admin_caption, parse_mode="Markdown", reply_markup=admin_markup)
+                    
+                    # User ကို ပြန်ကြားချက်
+                    user_reply = (
+                        "✨ ━━━━━━━━━━━━━━━━━━ ✨\n"
+                        "📩 **သင်၏ Task လုပ်ထားသော သက်သေကို Admin ထံသို့ ပို့ထားပြီးဖြစ်ပါသည်။**\n\n"
+                        "⏰ ည (၈) နာရီ သို့မဟုတ် (12) နာရီ ကြားတွင် စစ်ဆေးပြီး Coins ထည့်သွင်းပေးသွားမည် ဖြစ်ပါသည်ဗျာ။\n\n"
+                        "🙏 **ကျေးဇူးအထူးတင်ရှိပါသည်ခင်ဗျာ!** ✨"
+                    )
+                    bot.edit_message_text(user_reply, chat_id, call.message.message_id, parse_mode="Markdown")
+                    
+                    # Task တင်ပြီးစာရင်းသွင်း
+                    db[user_id]["last_task_time"] = datetime.now().isoformat()
+                    db[user_id]["task_count_today"] = db.get(user_id, {}).get("task_count_today", 0) + 1
+                    db[user_id]["last_photo_id"] = None
+                    save_db(db)
+                
+                except Exception as e:
+                    print(f"🔴 Admin Group သို့ ပို့မရပါ: {e}")
+                    error_msg = (
+                        f"❌ **Admin Group သို့ သက်သေလှမ်းပို့ခြင်း မအောင်မြင်ပါ!**\n\n"
+                        f"⚠️ **အကြောင်းရင်း:** `{str(e)[:100]}`\n\n"
+                        f"💡 **ဖြေရှင်းနည်း:**\n"
+                        f"၁။ Bot ကို Admin Group ထဲမှာ **Admin** အဖြစ် ခန့်ထားပါ။\n"
+                        f"၂။ `ADMIN_GROUP_ID` နံပါတ် မှန်ကန်မှုရှိမရှိ စစ်ဆေးပါ။"
+                    )
+                    bot.edit_message_text(error_msg, chat_id, call.message.message_id, parse_mode="Markdown")
+            else:
+                bot.edit_message_text(
+                    "❌ Task စစ်ဆေးမှုကို ဖျက်သိမ်းလိုက်ပါသည်။ `/check` ဖြင့် ပြန်လည်လုပ်ဆောင်နိုင်ပါသည်။",
                     chat_id, 
                     call.message.message_id
                 )
-                return
-            
-            current_time = datetime.now().strftime("%I:%M %p")
-            current_date = datetime.now().strftime("%Y-%m-%d")
-            
-            user_mention = f"[{name}](tg://user?id={user_id})"
-            
-            admin_caption = (
-                f"📥 **Task စစ်ဆေးရန် တောင်းဆိုချက်**\n\n"
-                f"👤 **Name:** {user_mention}\n"
-                f"🆔 **ID:** `{user_id}`\n"
-                f"📧 **Gmail:** `{user_email}`\n"
-                f"⏰ **အချိန်:** {current_time} ({current_date})"
-            )
-            
-            admin_markup = types.InlineKeyboardMarkup()
-            btn_confirm = types.InlineKeyboardButton("✅ Confirm", callback_data=f"adm_confirm_{user_id}")
-            btn_reject = types.InlineKeyboardButton("❌ Reject", callback_data=f"adm_reject_{user_id}")
-            admin_markup.add(btn_confirm, btn_reject)
+
+        # ----- Admin Confirm -----
+        elif call.data.startswith("adm_confirm_"):
+            target_user_id = call.data.split("_")[2]
+            admin_name = call.from_user.first_name
+            admin_username = call.from_user.username or "No username"
             
             try:
-                bot.send_photo(ADMIN_GROUP_ID, photo_id, caption=admin_caption, parse_mode="Markdown", reply_markup=admin_markup)
-                
-                user_reply = (
-                    "✨ ━━━━━━━━━━━━━━━━━━ ✨\n"
-                    "📩 **သင်၏ Task လုပ်ထားသော သက်သေကို Admin ထံသို့ ပို့ထားပြီးဖြစ်ပါသည်။**\n\n"
-                    "⏰ ည (၈) နာရီ သို့မဟုတ် (၉) နာရီ ကြားတွင် စစ်ဆေးပြီး Coins ထည့်သွင်းပေးသွားမည် ဖြစ်ပါသည်ဗျာ။\n\n"
-                    "🙏 **ကျေးဇူးအထူးတင်ရှိပါသည်ခင်ဗျာ!** ✨"
-                )
-                bot.edit_message_text(user_reply, chat_id, call.message.message_id, parse_mode="Markdown")
-                
-                db[user_id]["last_task_time"] = datetime.now().isoformat()
-                db[user_id]["task_count_today"] = db.get(user_id, {}).get("task_count_today", 0) + 1
-                db[user_id]["last_photo_id"] = None
-                save_db(db)
-            
+                orig_caption = call.message.caption or ""
+                updated_caption = f"{orig_caption}\n\n✅ **Confirmed by:** @{admin_username} ({admin_name})"
+                bot.edit_message_caption(updated_caption, ADMIN_GROUP_ID, call.message.message_id, parse_mode="Markdown", reply_markup=None)
             except Exception as e:
-                print(f"🔴 Admin Group သို့ ပို့မရပါ: {e}")
-                error_msg = (
-                    f"❌ **Admin Group သို့ သက်သေလှမ်းပို့ခြင်း မအောင်မြင်ပါ!**\n\n"
-                    f"⚠️ **အကြောင်းရင်း:** `{str(e)[:100]}`\n\n"
-                    f"💡 **ဖြေရှင်းနည်း:**\n"
-                    f"၁။ Bot ကို Admin Group ထဲမှာ **Admin** အဖြစ် ခန့်ထားပါ။\n"
-                    f"၂။ `ADMIN_GROUP_ID` နံပါတ် မှန်ကန်မှုရှိမရှိ စစ်ဆေးပါ။"
-                )
-                bot.edit_message_text(error_msg, chat_id, call.message.message_id, parse_mode="Markdown")
-        else:
-            bot.edit_message_text(
-                "❌ Task စစ်ဆေးမှုကို ဖျက်သိမ်းလိုက်ပါသည်။ `/check` ဖြင့် ပြန်လည်လုပ်ဆောင်နိုင်ပါသည်။",
-                chat_id, 
-                call.message.message_id
+                print(f"Error editing caption: {e}")
+            
+            user_markup = types.InlineKeyboardMarkup(row_width=1)
+            btn_no_coin = types.InlineKeyboardButton("❌ Coin မရောက်ပါ", callback_data=f"user_nocoin_{target_user_id}")
+            user_markup.add(btn_no_coin)
+            
+            success_msg = (
+                "🍬 ✨ **Candy Hub Notification** ✨ 🍬\n"
+                "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                "🎉 **Candy Hub မှ သင်၏ Task ကို အတည်ပြုလိုက်ပါသည်။**\n"
+                "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                "🧸 _ဆုကြေး Coins များကို အကောင့်ထဲသို့ ထည့်သွင်းပေးလိုက်ပါပြီဗျာ။_"
             )
+            try:
+                bot.send_message(int(target_user_id), success_msg, parse_mode="Markdown", reply_markup=user_markup)
+                bot.answer_callback_query(call.id, "✅ User ကို အတည်ပြုကြောင်း ပို့ပြီးပါပြီ။")
+            except Exception as e:
+                print(f"Error sending to user: {e}")
 
-    # ----- Admin Confirm -----
-    elif call.data.startswith("adm_confirm_"):
-        target_user_id = call.data.split("_")[2]
-        admin_name = call.from_user.first_name
-        admin_username = call.from_user.username or "No username"
-        
-        orig_caption = call.message.caption or ""
-        updated_caption = f"{orig_caption}\n\n✅ **Confirmed by:** @{admin_username} ({admin_name})"
-        bot.edit_message_caption(updated_caption, ADMIN_GROUP_ID, call.message.message_id, parse_mode="Markdown", reply_markup=None)
-        
-        user_markup = types.InlineKeyboardMarkup()
-        btn_no_coin = types.InlineKeyboardButton("❌ Coin မရောက်ပါ", callback_data=f"user_nocoin_{target_user_id}")
-        user_markup.add(btn_no_coin)
-        
-        success_msg = (
-            "🍬 ✨ **Candy Hub Notification** ✨ 🍬\n"
-            "━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            "🎉 **Candy Hub မှ သင်၏ Task ကို အတည်ပြုလိုက်ပါသည်။**\n"
-            "━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            "🧸 _ဆုကြေး Coins များကို အကောင့်ထဲသို့ ထည့်သွင်းပေးလိုက်ပါပြီဗျာ။_"
-        )
-        bot.send_message(int(target_user_id), success_msg, parse_mode="Markdown", reply_markup=user_markup)
+        # ----- Admin Reject -----
+        elif call.data.startswith("adm_reject_"):
+            target_user_id = call.data.split("_")[2]
+            admin_name = call.from_user.first_name
+            admin_username = call.from_user.username or "No username"
+            
+            try:
+                orig_caption = call.message.caption or ""
+                updated_caption = f"{orig_caption}\n\n❌ **Rejected by:** @{admin_username} ({admin_name})"
+                bot.edit_message_caption(updated_caption, ADMIN_GROUP_ID, call.message.message_id, parse_mode="Markdown", reply_markup=None)
+            except Exception as e:
+                print(f"Error editing caption: {e}")
+            
+            reject_msg = (
+                "⚠️ ━━━━━━━━━━━━━━━━━━ ⚠️\n"
+                "😭 **တောင်းပန်ပါတယ်ခင်ဗျာ...**\n"
+                "❌ **လူကြီးမင်း ပေးပို့ထားသော သက်သေသည် ပယ်ချခံရပါသည်။**\n\n"
+                "📸 _ကျေးဇူးပြု၍ ပုံကို သေချာပြန်လည်စစ်ဆေးပြီး မှန်ကန်စွာ ပြန်လည်ပေးပို့ပေးပါဦးနော်။_"
+            )
+            try:
+                bot.send_message(int(target_user_id), reject_msg, parse_mode="Markdown")
+                bot.answer_callback_query(call.id, "✅ User ကို ပယ်ချကြောင်း ပို့ပြီးပါပြီ။")
+            except Exception as e:
+                print(f"Error sending to user: {e}")
 
-    # ----- Admin Reject -----
-    elif call.data.startswith("adm_reject_"):
-        target_user_id = call.data.split("_")[2]
-        admin_name = call.from_user.first_name
-        admin_username = call.from_user.username or "No username"
-        
-        orig_caption = call.message.caption or ""
-        updated_caption = f"{orig_caption}\n\n❌ **Rejected by:** @{admin_username} ({admin_name})"
-        bot.edit_message_caption(updated_caption, ADMIN_GROUP_ID, call.message.message_id, parse_mode="Markdown", reply_markup=None)
-        
-        reject_msg = (
-            "⚠️ ━━━━━━━━━━━━━━━━━━ ⚠️\n"
-            "😭 **တောင်းပန်ပါတယ်ခင်ဗျာ...**\n"
-            "❌ **လူကြီးမင်း ပေးပို့ထားသော သက်သေသည် ပယ်ချခံရပါသည်။**\n\n"
-            "📸 _ကျေးဇူးပြု၍ ပုံကို သေချာပြန်လည်စစ်ဆေးပြီး မှန်ကန်စွာ ပြန်လည်ပေးပို့ပေးပါဦးနော်။_"
-        )
-        bot.send_message(int(target_user_id), reject_msg, parse_mode="Markdown")
+        # ----- User No Coin -----
+        elif call.data.startswith("user_nocoin_"):
+            target_user_id = call.data.split("_")[2]
+            user_info = db.get(target_user_id, {})
+            user_name = user_info.get('name', 'Unknown')
+            user_email = user_info.get('email', 'No email')
+            
+            to_gp_markup = types.InlineKeyboardMarkup(row_width=1)
+            btn_fixed = types.InlineKeyboardButton("✅ Confirm / Fixed", callback_data=f"adm_fixed_{target_user_id}")
+            to_gp_markup.add(btn_fixed)
+            
+            alert_gp_text = (
+                f"⚠️ 🔔 **🚨 COIN NOT RECEIVED ALERT 🚨**\n\n"
+                f"👤 **User:** {user_name}\n"
+                f"📧 **Email:** `{user_email}`\n\n"
+                f"❗ **သည် Coin မရရှိသေးပါ။ ပြန်လည်စစ်ဆေးပေးပါ။**"
+            )
+            try:
+                bot.send_message(ADMIN_GROUP_ID, alert_gp_text, parse_mode="Markdown", reply_markup=to_gp_markup)
+                bot.answer_callback_query(call.id, "✅ Admin ထံ တင်ပြပေးလိုက်ပါပြီ။", show_alert=True)
+            except Exception as e:
+                print(f"Error sending to admin: {e}")
 
-    # ----- User No Coin -----
-    elif call.data.startswith("user_nocoin_"):
-        target_user_id = call.data.split("_")[2]
-        user_info = db.get(target_user_id, {})
-        user_name = user_info.get('name', 'Unknown')
-        user_email = user_info.get('email', 'No email')
-        
-        to_gp_markup = types.InlineKeyboardMarkup()
-        btn_fixed = types.InlineKeyboardButton("✅ Confirm / Fixed", callback_data=f"adm_fixed_{target_user_id}")
-        to_gp_markup.add(btn_fixed)
-        
-        alert_gp_text = (
-            f"⚠️ 🔔 **🚨 COIN NOT RECEIVED ALERT 🚨**\n\n"
-            f"👤 **User:** {user_name}\n"
-            f"📧 **Email:** `{user_email}`\n\n"
-            f"❗ **သည် Coin မရရှိသေးပါ။ ပြန်လည်စစ်ဆေးပေးပါ။**"
-        )
-        bot.send_message(ADMIN_GROUP_ID, alert_gp_text, parse_mode="Markdown", reply_markup=to_gp_markup)
-        bot.answer_callback_query(call.id, "✅ Admin ထံ တင်ပြပေးလိုက်ပါပြီ။", show_alert=True)
+        # ----- Admin Fixed -----
+        elif call.data.startswith("adm_fixed_"):
+            target_user_id = call.data.split("_")[2]
+            try:
+                bot.edit_message_text(
+                    f"✅ User ID `{target_user_id}` အတွက် Coins ပြဿနာကို ဖြေရှင်းပြီးပါပြီ။",
+                    ADMIN_GROUP_ID, 
+                    call.message.message_id
+                )
+            except Exception as e:
+                print(f"Error editing message: {e}")
+            
+            apology_msg = (
+                "🥺 ━━━━━━━━━━━━━━━━━━ 🥺\n"
+                "💖 **ချစ်လှစွာသော User ခင်ဗျာ...**\n"
+                "📬 **တောင်းပန်ပါတယ်နော်။ စနစ်ပိုင်းအမှားအယွင်းကြောင့် လွဲချော်သွားလို့ပါဗျာ။**\n\n"
+                "✨ _ယခုအခါ Coins များကို သေချာပေါက် ဖြည့်သွင်းပေးပြီးဖြစ်လို့ ပြန်လည်စစ်ဆေးပေးပါဦးခင်ဗျာ။_ 🙏"
+            )
+            try:
+                bot.send_message(int(target_user_id), apology_msg, parse_mode="Markdown")
+                bot.answer_callback_query(call.id, "✅ User ကို အကြောင်းကြားပြီးပါပြီ။")
+            except Exception as e:
+                print(f"Error sending to user: {e}")
 
-    # ----- Admin Fixed -----
-    elif call.data.startswith("adm_fixed_"):
-        target_user_id = call.data.split("_")[2]
-        bot.edit_message_text(
-            f"✅ User ID `{target_user_id}` အတွက် Coins ပြဿနာကို ဖြေရှင်းပြီးပါပြီ။",
-            ADMIN_GROUP_ID, 
-            call.message.message_id
-        )
-        
-        apology_msg = (
-            "🥺 ━━━━━━━━━━━━━━━━━━ 🥺\n"
-            "💖 **ချစ်လှစွာသော User ခင်ဗျာ...**\n"
-            "📬 **တောင်းပန်ပါတယ်နော်။ စနစ်ပိုင်းအမှားအယွင်းကြောင့် လွဲချော်သွားလို့ပါဗျာ။**\n\n"
-            "✨ _ယခုအခါ Coins များကို သေချာပေါက် ဖြည့်သွင်းပေးပြီးဖြစ်လို့ ပြန်လည်စစ်ဆေးပေးပါဦးခင်ဗျာ။_ 🙏"
-        )
-        bot.send_message(int(target_user_id), apology_msg, parse_mode="Markdown")
-
-    # ----- Trigger Check from Profile -----
-    elif call.data == "trigger_check":
-        bot.delete_message(call.message.chat.id, call.message.message_id)
-        check_cmd(call.message)
+        # ----- Trigger Check from Profile -----
+        elif call.data == "trigger_check":
+            bot.delete_message(call.message.chat.id, call.message.message_id)
+            check_cmd(call.message)
+            
+    except Exception as e:
+        print(f"❌ Callback error: {e}")
+        try:
+            bot.answer_callback_query(call.id, f"❌ Error: {str(e)[:50]}", show_alert=True)
+        except:
+            pass
 
 # ============================================
 #  EMAIL PROCESS
@@ -402,7 +442,7 @@ def profile_cmd(message):
         f"📧 **Email (အသေ) -** `{db[user_id]['email']}`"
     )
     
-    markup = types.InlineKeyboardMarkup()
+    markup = types.InlineKeyboardMarkup(row_width=1)
     markup.add(types.InlineKeyboardButton("📝 Task စစ်ဆေးရန်", callback_data="trigger_check"))
     bot.send_message(message.chat.id, profile_text, parse_mode="Markdown", reply_markup=markup)
 
@@ -480,7 +520,7 @@ if __name__ == "__main__":
     flask_thread = threading.Thread(target=run_flask)
     flask_thread.daemon = True
     flask_thread.start()
-    print("✅ Flask server started on port 8080")
+    print("✅ Flask server started")
 
     # Self-ping ကို background thread မှာ run
     ping_thread = threading.Thread(target=ping_self)
@@ -490,8 +530,14 @@ if __name__ == "__main__":
 
     print("=" * 50)
     print("🤖 Bot is now running...")
-    print("🌐 Web URL: https://beta-no7j.onrender.com")
     print("=" * 50)
+    
+    # Remove webhook and use polling
+    try:
+        bot.remove_webhook()
+        print("✅ Webhook removed successfully")
+    except Exception as e:
+        print(f"⚠️ Webhook removal error: {e}")
     
     while True:
         try:
