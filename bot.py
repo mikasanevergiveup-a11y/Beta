@@ -108,19 +108,6 @@ def handle_callbacks(call):
         else:
             bot.answer_callback_query(call.id, "❌ ချန်နယ် (၂) ခုလုံးကို မဝင်ရသေးပါဗျာ။", show_alert=True)
 
-    elif call.data.startswith("confirm_email_"):
-        choice = call.data.split("_")[2]
-        temp_email = call.data.split("_")[3]
-        
-        if choice == "yes":
-            db[user_id]["email"] = temp_email
-            save_db(db)
-            bot.edit_message_text(f"🎉 **အီးမေးလ် အတည်ပြုသိမ်းဆည်းပြီးပါပြီ!**\n💾 Email: `{temp_email}`\n\n👉 ယခုမှစ၍ `/profile` သို့မဟုတ် `/check` ဟုရိုက်နှိပ်ကာ Task များ စစ်ဆေးနိုင်ပါပြီ။", chat_id, call.message.message_id, parse_mode="Markdown")
-        else:
-            bot.delete_message(chat_id, call.message.message_id)
-            msg = bot.send_message(chat_id, "ℹ️ အီးမေးလ်ကို ပြန်လည်ရေးသားပေးပါရန်။")
-            bot.register_next_step_handler(msg, process_email)
-
     elif call.data.startswith("task_verify_"):
         choice = call.data.split("_")[2]
         if choice == "yes":
@@ -130,10 +117,8 @@ def handle_callbacks(call):
             user_email = db[user_id].get("email")
             name = db[user_id].get("name", call.from_user.first_name)
             
-            # Screenshot ထဲကအတိုင်း ပုံစံညှိခြင်း (YYYY-MM-DD HH:MM:SS)
             current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             
-            # 🖼️ Screenshot ပါ စာသားပုံစံအတိုင်း ကွက်တိ ပြင်ဆင်ထားသောနေရာ
             admin_caption = (
                 f"📥 Task 1 စစ်ဆေးရန် တောင်းဆိုချက်\n\n"
                 f"👤 Name: {name}\n"
@@ -148,7 +133,6 @@ def handle_callbacks(call):
             btn_reject = types.InlineKeyboardButton("❌ Reject", callback_data=f"adm_reject_{user_id}")
             admin_markup.add(btn_confirm, btn_reject)
             
-            # 🛡️ Group ထဲသို့ ပို့မရပါက ဘာကြောင့်လဲဆိုတာသိအောင် Error Catch လုပ်ထားခြင်း
             try:
                 bot.send_photo(ADMIN_GROUP_ID, photo_id, caption=admin_caption, reply_markup=admin_markup)
                 
@@ -251,12 +235,27 @@ def process_email(message):
         msg = bot.send_message(message.chat.id, "❌ အီးမေးလ်ပုံစံ မမှန်ကန်ပါ။ ပြန်လည်ရိုက်ထည့်ပေးပါ။")
         bot.register_next_step_handler(msg, process_email)
         return
-        
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("✅ Yes", callback_data=f"confirm_email_yes_{email}"),
-               types.InlineKeyboardButton("❌ No", callback_data=f"confirm_email_no_{email}"))
     
-    bot.send_message(message.chat.id, f"❓ လူကြီးမင်းရိုက်ထည့်လိုက်သော Email မှာ `{email}` ဖြစ်ပါသည်။ သေချာပါသလားဗျာ?", parse_mode="Markdown", reply_markup=markup)
+    # Yes/No Confirmation ကိုဖြုတ်ပြီး တိုက်ရိုက်သိမ်းဆည်းသောအပိုင်း
+    user_id = str(message.chat.id)
+    db = load_db()
+    
+    if user_id not in db:
+        db[user_id] = {
+            "name": message.from_user.first_name if message.from_user else "User",
+            "email": None,
+            "username": (message.from_user.username if message.from_user else None) or "မရှိပါ"
+        }
+        
+    db[user_id]["email"] = email
+    save_db(db)
+    
+    success_text = (
+        f"🎉 **အီးမေးလ် အောင်မြင်စွာ သိမ်းဆည်းပြီးပါပြီ!**\n"
+        f"💾 Email: `{email}`\n\n"
+        f"👉 ယခုမှစ၍ `/profile` သို့မဟုတ် `/check` ဟုရိုက်နှိပ်ကာ Task များ စစ်ဆေးနိုင်ပါပြီ။"
+    )
+    bot.send_message(message.chat.id, success_text, parse_mode="Markdown")
 
 # ==================== /profile Command ====================
 @bot.message_handler(commands=['profile'])
@@ -333,4 +332,3 @@ if __name__ == "__main__":
 
     print("🤖 Keep-Alive စနစ်ပါဝင်သော Candy Hub Bot စတင်အလုပ်လုပ်နေပါပြီ...")
     bot.infinity_polling()
-
