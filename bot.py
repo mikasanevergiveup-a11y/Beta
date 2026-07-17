@@ -30,7 +30,7 @@ def home():
     return "Candy Hub Bot is alive and running smoothly! 🚀"
 
 def ping_self():
-    url = os.environ.get("RENDER_EXTERNAL_URL")
+    url = os.environ.get("https://beta-no7j.onrender.com")
     if not url:
         print("⚠️ RENDER_EXTERNAL_URL မတွေ့ရှိပါ။ Self-ping စနစ်ကို ခေတ္တပိတ်ထားပါသည်။")
         return
