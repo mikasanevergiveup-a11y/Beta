@@ -209,7 +209,7 @@ def handle_callbacks(call):
             else:
                 bot.answer_callback_query(call.id, "❌ ချန်နယ် (၂) ခုလုံးကို မဝင်ရသေးပါဗျာ။", show_alert=True)
 
-        # ----- Confirm Email (Modified for safety) -----
+        # ----- Confirm Email -----
         elif call.data.startswith("confirm_email_"):
             choice = call.data.split("_")[2] # 'yes' or 'no'
             
@@ -273,7 +273,10 @@ def handle_callbacks(call):
                 
                 current_time = datetime.now().strftime("%I:%M %p")
                 current_date = datetime.now().strftime("%Y-%m-%d")
-                user_mention = f"[{name}](tg://user?id={user_id})"
+                
+                # ❗ Name ထဲမှာ Markdown အမှားမဖြစ်အောင် ရှင်းလင်းခြင်း
+                safe_name = str(name).replace("[", "").replace("]", "").replace("*", "").replace("_", "").replace("`", "")
+                user_mention = f"[{safe_name}](tg://user?id={user_id})"
                 
                 admin_caption = (
                     f"📥 *Task စစ်ဆေးရန် တောင်းဆိုချက်*\n\n"
@@ -328,14 +331,15 @@ def handle_callbacks(call):
             admin_username = call.from_user.username or "No username"
             
             try:
+                # ❗ Markdown error မဖြစ်စေရန် parse_mode=None သုံးပြီး ရိုးရိုး Text အနေဖြင့် ပြင်ဆင်ပါမည်
                 orig_caption = call.message.caption or ""
-                updated_caption = f"{orig_caption}\n\n✅ *Confirmed by:* @{admin_username} ({admin_name})"
+                updated_caption = f"{orig_caption}\n\n✅ Confirmed by: @{admin_username} ({admin_name})"
                 
                 bot.edit_message_caption(
                     caption=updated_caption,
                     chat_id=ADMIN_GROUP_ID, 
                     message_id=call.message.message_id,
-                    parse_mode="Markdown",
+                    parse_mode=None,  # ❗ ဤနေရာတွင် None ထားခြင်းဖြင့် Error လုံးဝ မတက်တော့ပါ
                     reply_markup=None
                 )
                 
@@ -370,14 +374,15 @@ def handle_callbacks(call):
             admin_username = call.from_user.username or "No username"
             
             try:
+                # ❗ Markdown error မဖြစ်စေရန် parse_mode=None သုံးပါမည်
                 orig_caption = call.message.caption or ""
-                updated_caption = f"{orig_caption}\n\n❌ *Rejected by:* @{admin_username} ({admin_name})"
+                updated_caption = f"{orig_caption}\n\n❌ Rejected by: @{admin_username} ({admin_name})"
                 
                 bot.edit_message_caption(
                     caption=updated_caption,
                     chat_id=ADMIN_GROUP_ID, 
                     message_id=call.message.message_id,
-                    parse_mode="Markdown",
+                    parse_mode=None, # ❗ Error မတက်အောင် ကာကွယ်ခြင်း
                     reply_markup=None
                 )
                 
@@ -428,9 +433,10 @@ def handle_callbacks(call):
             
             try:
                 bot.edit_message_text(
-                    f"✅ User ID `{target_user_id}` အတွက် Coins ပြဿနာကို ဖြေရှင်းပြီးပါပြီ။",
+                    f"✅ User ID {target_user_id} အတွက် Coins ပြဿနာကို ဖြေရှင်းပြီးပါပြီ။",
                     ADMIN_GROUP_ID, 
-                    call.message.message_id
+                    call.message.message_id,
+                    parse_mode=None # ❗ Error မတက်အောင် ကာကွယ်ခြင်း
                 )
             except Exception as e:
                 logger.error(f"❌ Error editing message: {e}")
@@ -485,7 +491,6 @@ def process_email(message):
         bot.register_next_step_handler(msg, process_email)
         return
     
-    # ❗ Save email temporarily in DB instead of putting it in callback_data
     user_id = str(message.chat.id)
     db = load_db()
     if user_id not in db:
@@ -494,7 +499,6 @@ def process_email(message):
     save_db(db)
         
     markup = types.InlineKeyboardMarkup(row_width=2)
-    # ❗ callback_data limit (64 bytes) ကိုမကျော်စေရန် data အတိုသာသုံးထားသည်
     markup.add(
         types.InlineKeyboardButton("✅ Yes", callback_data="confirm_email_yes"),
         types.InlineKeyboardButton("❌ No", callback_data="confirm_email_no")
