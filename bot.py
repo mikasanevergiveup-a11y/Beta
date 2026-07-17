@@ -3,13 +3,14 @@ from telebot import types
 from datetime import datetime
 import json
 import os
+import threading
+import time
+import requests
+from flask import Flask
 
-# --- Render ရဲ့ Environment Variables (သို့မဟုတ်) Secret File မှ ဖတ်ယူခြင်း ---
-# 💡 Render Dashboard ထဲမှာ BOT_TOKEN နဲ့ ADMIN_GROUP_ID ကို သွားထည့်ပေးထားရပါမယ်။
+# --- Render ရဲ့ Environment Variables မှ ဖတ်ယူခြင်း ---
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 ADMIN_GROUP_ID_STR = os.environ.get("ADMIN_GROUP_ID")
-
-# ID ကို Integer (ကိန်းပြည့်) ပုံစံသို့ ပြောင်းလဲခြင်း (Render က String အနေနဲ့ပဲ ပေးလို့ပါ)
 ADMIN_GROUP_ID = int(ADMIN_GROUP_ID_STR) if ADMIN_GROUP_ID_STR else 0
 
 bot = telebot.TeleBot(BOT_TOKEN)
@@ -21,7 +22,33 @@ CHANNEL_2_ID = "@candyhubassissiant"
 CHANNEL_1_URL = "https://t.me/CandyHub_Ch"
 CHANNEL_2_URL = "https://t.me/candyhubassissiant"
 
-# JSON Database Helper Functions
+# --- 🌐 KEEP-ALIVE SERVER (FLASK & SELF-PING) SECTION ---
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "Candy Hub Bot is alive and running smoothly! 🚀"
+
+def ping_self():
+    url = os.environ.get("RENDER_EXTERNAL_URL")
+    if not url:
+        print("⚠️ RENDER_EXTERNAL_URL မတွေ့ရှိပါ။ Self-ping စနစ်ကို ခေတ္တပိတ်ထားပါသည်။")
+        return
+    
+    print(f"🔄 Self-ping စနစ် စတင်ပါပြီ။ URL: {url}")
+    while True:
+        time.sleep(600)  # ၁၀ မိနစ်တစ်ကြိမ်
+        try:
+            response = requests.get(url)
+            print(f"🟢 Ping အောင်မြင်သည် - Status Code: {response.status_code}")
+        except Exception as e:
+            print(f"🔴 Ping ရန် ကြိုးစားမှု ပျက်ကွက်သည်: {e}")
+
+def run_flask():
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)
+
+# --- 💾 DATABASE HELPER FUNCTIONS ---
 def load_db():
     if os.path.exists(DB_FILE):
         with open(DB_FILE, "r", encoding="utf-8") as f:
@@ -101,16 +128,19 @@ def handle_callbacks(call):
             
             photo_id = db[user_id].get("last_photo_id")
             user_email = db[user_id].get("email")
-            username = call.from_user.username or "မရှိပါ"
-            name = call.from_user.first_name
-            current_time = datetime.now().strftime("%I:%M %p")
+            name = db[user_id].get("name", call.from_user.first_name)
             
+            # Screenshot ထဲကအတိုင်း ပုံစံညှိခြင်း (YYYY-MM-DD HH:MM:SS)
+            current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            
+            # 🖼️ Screenshot ပါ စာသားပုံစံအတိုင်း ကွက်တိ ပြင်ဆင်ထားသောနေရာ
             admin_caption = (
-                f"📥 ══ **Task သက်သေအသစ် ရောက်ရှိလာပါသည်** ══\n\n"
-                f"👤 **User:** {name} ( @{username} )\n"
-                f"📧 **Email:** `{user_email}`\n"
-                f"⏰ **Time:** {current_time}\n"
-                f"👮 **Confirmed by:** စစ်ဆေးဆဲ ⏳"
+                f"📥 Task 1 စစ်ဆေးရန် တောင်းဆိုချက်\n\n"
+                f"👤 Name: {name}\n"
+                f"🆔 ID: {user_id}\n"
+                f"📧 Gmail: {user_email}\n"
+                f"🔑 Pass: မသတ်မှတ်ရသေး\n"
+                f"⏰ အချိန်: {current_time}"
             )
             
             admin_markup = types.InlineKeyboardMarkup()
@@ -118,15 +148,28 @@ def handle_callbacks(call):
             btn_reject = types.InlineKeyboardButton("❌ Reject", callback_data=f"adm_reject_{user_id}")
             admin_markup.add(btn_confirm, btn_reject)
             
-            bot.send_photo(ADMIN_GROUP_ID, photo_id, caption=admin_caption, parse_mode="Markdown", reply_markup=admin_markup)
+            # 🛡️ Group ထဲသို့ ပို့မရပါက ဘာကြောင့်လဲဆိုတာသိအောင် Error Catch လုပ်ထားခြင်း
+            try:
+                bot.send_photo(ADMIN_GROUP_ID, photo_id, caption=admin_caption, reply_markup=admin_markup)
+                
+                user_reply = (
+                    "✨ ━━━━━━━━━━━━━━━━━━ ✨\n"
+                    "📩 **သင်၏ Task လုပ်ထားသောသက်သေကို Admin ထံသို့ ပို့ထားပြီးဖြစ်ပါသည်။**\n\n"
+                    "⏰ ည (၈) နာရီ သို့မဟုတ် (၉) နာရီ ကြားတွင် စစ်ဆေးပြီး Coins ထည့်သွင်းပေးသွားမည် ဖြစ်ပါသည်ဗျာ။\n\n"
+                    "🙏 **ကျေးဇူးအထူးတင်ရှိပါသည်ခင်ဗျာ!** ✨"
+                )
+                bot.edit_message_text(user_reply, chat_id, call.message.message_id, parse_mode="Markdown")
             
-            user_reply = (
-                "✨ ━━━━━━━━━━━━━━━━━━ ✨\n"
-                "📩 **သင်၏ Task လုပ်ထားသောသက်သေကို Admin ထံသို့ ပို့ထားပြီးဖြစ်ပါသည်။**\n\n"
-                "⏰ ည (၈) နာရီ သို့မဟုတ် (၉) နာရီ ကြားတွင် စစ်ဆေးပြီး Coins ထည့်သွင်းပေးသွားမည် ဖြစ်ပါသည်ဗျာ။\n\n"
-                "🙏 **ကျေးဇူးအထူးတင်ရှိပါသည်ခင်ဗျာ!** ✨"
-            )
-            bot.edit_message_text(user_reply, chat_id, call.message.message_id, parse_mode="Markdown")
+            except Exception as e:
+                print(f"🔴 Admin Group သို့ ပို့မရပါ: {e}")
+                error_msg = (
+                    f"❌ **Admin Group သို့ သက်သေလှမ်းပို့ခြင်း မအောင်မြင်ပါ!**\n\n"
+                    f"⚠️ **အကြောင်းရင်း:** `{e}`\n\n"
+                    f"💡 **ဖြေရှင်းနည်း:**\n"
+                    f"၁။ သင့် Bot ကို အုပ်ချုပ်သူ Group ထဲမှာ **Admin** အဖြစ် ခန့်ထားပေးရပါမယ်။\n"
+                    f"၂။ Render Environment ထဲက `ADMIN_GROUP_ID` နံပါတ် မှန်ကန်မှုရှိမရှိ ပြန်စစ်ပေးပါ။ (အရှေ့က အနှုတ်လက္ခဏာ `-` ပါရပါမယ်)"
+                )
+                bot.edit_message_text(error_msg, chat_id, call.message.message_id, parse_mode="Markdown")
         else:
             bot.edit_message_text("❌ Task စစ်ဆေးမှုကို ဖျက်သိမ်းလိုက်ပါသည်။ `/check` ဖြင့် ပြန်လည်လုပ်ဆောင်နိုင်ပါသည်။", chat_id, call.message.message_id)
 
@@ -134,8 +177,8 @@ def handle_callbacks(call):
         target_user_id = call.data.split("_")[2]
         admin_name = call.from_user.first_name
         
-        orig_caption = call.message.caption
-        updated_caption = orig_caption.replace("👮 **Confirmed by:** စစ်ဆေးဆဲ ⏳", f"👮 **Confirmed by:** {admin_name} ✅")
+        orig_caption = call.message.caption or ""
+        updated_caption = f"{orig_caption}\n\n👮 **Confirmed by:** {admin_name} ✅"
         bot.edit_message_caption(updated_caption, ADMIN_GROUP_ID, call.message.message_id, reply_markup=None)
         
         user_markup = types.InlineKeyboardMarkup()
@@ -155,8 +198,8 @@ def handle_callbacks(call):
         target_user_id = call.data.split("_")[2]
         admin_name = call.from_user.first_name
         
-        orig_caption = call.message.caption
-        updated_caption = orig_caption.replace("👮 **Confirmed by:** စစ်ဆေးဆဲ ⏳", f"❌ **Rejected by:** {admin_name}")
+        orig_caption = call.message.caption or ""
+        updated_caption = f"{orig_caption}\n\n❌ **Rejected by:** {admin_name}"
         bot.edit_message_caption(updated_caption, ADMIN_GROUP_ID, call.message.message_id, reply_markup=None)
         
         reject_msg = (
@@ -213,7 +256,7 @@ def process_email(message):
     markup.add(types.InlineKeyboardButton("✅ Yes", callback_data=f"confirm_email_yes_{email}"),
                types.InlineKeyboardButton("❌ No", callback_data=f"confirm_email_no_{email}"))
     
-    bot.send_message(message.chat.id, f"❓ 人ကြီးမင်းရိုက်ထည့်လိုက်သော Email မှာ `{email}` ဖြစ်ပါသည်။ သေချာပါသလားဗျာ?", parse_mode="Markdown", reply_markup=markup)
+    bot.send_message(message.chat.id, f"❓ လူကြီးမင်းရိုက်ထည့်လိုက်သော Email မှာ `{email}` ဖြစ်ပါသည်။ သေချာပါသလားဗျာ?", parse_mode="Markdown", reply_markup=markup)
 
 # ==================== /profile Command ====================
 @bot.message_handler(commands=['profile'])
@@ -278,7 +321,16 @@ def process_screenshot(message):
     )
     bot.send_message(message.chat.id, verify_text, parse_mode="Markdown", reply_markup=markup)
 
+# ==================== 🚀 MAIN RUNNER SECTION ====================
 if __name__ == "__main__":
-    print("Candy Hub Env-Based Bot စတင်လည်ပတ်နေပါပြီ...")
+    flask_thread = threading.Thread(target=run_flask)
+    flask_thread.daemon = True
+    flask_thread.start()
+
+    ping_thread = threading.Thread(target=ping_self)
+    ping_thread.daemon = True
+    ping_thread.start()
+
+    print("🤖 Keep-Alive စနစ်ပါဝင်သော Candy Hub Bot စတင်အလုပ်လုပ်နေပါပြီ...")
     bot.infinity_polling()
-        
+
