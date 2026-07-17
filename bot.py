@@ -36,9 +36,9 @@ DB_FILE = "user_database.json"
 #  CHANNEL CONFIGURATION
 # ============================================
 CHANNEL_1_ID = "@CandyHub_Ch"
-CHANNEL_2_ID = "@candyhubassissiant"
-CHANNEL_1_URL = "https://t.meCandyHub_Ch"
-CHANNEL_2_URL = "https://t.me/candyhubassissitant"
+CHANNEL_2_ID = "@candyhubassistant"
+CHANNEL_1_URL = "https://t.me/CandyHub_Ch"
+CHANNEL_2_URL = "https://t.me/candyhubassistant"
 
 # ============================================
 #  FLASK KEEP-ALIVE SERVER
@@ -160,12 +160,15 @@ def send_to_admin_group(photo_id, caption, reply_markup=None):
 @bot.message_handler(commands=['start'])
 def start_cmd(message):
     user_id = str(message.from_user.id)
-    first_name = message.from_user.first_name
+    # ❗ first_name မရှိခဲ့လျှင် 'User' ဟု သတ်မှတ်ပေးရန်နှင့် 
+    # ❗ Markdown error မဖြစ်စေရန် special characters များကို ရှင်းလင်း/escape လုပ်ပေးခြင်း
+    first_name = message.from_user.first_name or "User"
+    safe_name = first_name.replace("_", "\\_").replace("*", "").replace("[", "").replace("`", "")
     
     db = load_db()
     if user_id not in db:
         db[user_id] = {
-            "name": first_name, 
+            "name": first_name, # db ထဲမှာတော့ နာမည်အမှန်အတိုင်းသာ သိမ်းပါမည်
             "email": None, 
             "username": message.from_user.username or "မရှိပါ",
             "last_task_time": None,
@@ -173,8 +176,9 @@ def start_cmd(message):
         }
         save_db(db)
 
+    # ❗ Telegram legacy Markdown အရ ** အစား * ကို အသုံးပြုထားပါသည်
     welcome_text = (
-        f"👋 **မင်္ဂလာပါ {first_name}**\n\n"
+        f"👋 *မင်္ဂလာပါ {safe_name}*\n\n"
         f"🤖 Bot ကို အသုံးပြုရန် အောက်ပါ Channels (၂) ခုလုံးကို Join ပေးပါရန် လိုအပ်ပါတယ်ဗျာ။ 👇"
     )
     
@@ -184,7 +188,13 @@ def start_cmd(message):
     btn_check = types.InlineKeyboardButton("🔄 Check Status", callback_data="check_channels")
     markup.add(btn1, btn2, btn_check)
     
-    bot.send_message(message.chat.id, welcome_text, parse_mode="Markdown", reply_markup=markup)
+    # ❗ Error တက်ပြီး စာမပြန်ဘဲ ရပ်သွားခြင်းမှ ကာကွယ်ရန် try-except အသုံးပြုထားပါသည်
+    try:
+        bot.send_message(message.chat.id, welcome_text, parse_mode="Markdown", reply_markup=markup)
+    except Exception as e:
+        logger.error(f"❌ /start message error: {e}")
+        # အကယ်၍ parse_mode Error တက်ခဲ့လျှင် normal text အနေဖြင့် အတင်းပို့ပေးပါမည်
+        bot.send_message(message.chat.id, welcome_text.replace('*', ''), reply_markup=markup)
 
 # ============================================
 #  CALLBACK QUERY HANDLER
@@ -490,40 +500,6 @@ def process_email(message):
         reply_markup=markup
     )
 
-# 
-# ============================================
-#  EMAIL PROCESS
-# ============================================
-def ask_email(message):
-    msg = bot.send_message(
-        message.chat.id, 
-        "📧 **သင်၏ Candy Hub Acc ထဲသို့ Coin လှမ်းထည့်မည့် Email (အသေ) ကို ရေးသားပေးပါ၊ မမှားပါစေနှင့်။**"
-    )
-    bot.register_next_step_handler(msg, process_email)
-
-def process_email(message):
-    email = message.text.strip()
-    if "@" not in email or "." not in email:
-        msg = bot.send_message(
-            message.chat.id, 
-            "❌ အီးမေးလ်ပုံစံ မမှန်ကန်ပါ။ ပြန်လည်ရိုက်ထည့်ပေးပါ။"
-        )
-        bot.register_next_step_handler(msg, process_email)
-        return
-        
-    markup = types.InlineKeyboardMarkup(row_width=2)
-    markup.add(
-        types.InlineKeyboardButton("✅ Yes", callback_data=f"confirm_email_yes_{email}"),
-        types.InlineKeyboardButton("❌ No", callback_data=f"confirm_email_no_{email}")
-    )
-    
-    bot.send_message(
-        message.chat.id, 
-        f"❓ လူကြီးမင်းရိုက်ထည့်လိုက်သော Email မှာ `{email}` ဖြစ်ပါသည်။ သေချာပါသလားဗျာ?",
-        parse_mode="Markdown", 
-        reply_markup=markup
-    )
-
 # ============================================
 #  /profile COMMAND
 # ============================================
@@ -649,3 +625,4 @@ if __name__ == "__main__":
             print(f"⚠️ Polling error: {e}")
             print("🔄 5 seconds နောက် ပြန်စတင်မည်...")
             time.sleep(5)
+
