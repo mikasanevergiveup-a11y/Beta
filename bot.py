@@ -412,7 +412,7 @@ def handle_callbacks(call):
             user_info = db.get(target_user_id, {})
             
             user_name = user_info.get('name') or call.from_user.first_name or 'Unknown'
-            # ❗ Markdown Error မတက်အောင် သင်္ကေတတွေ ဖျက်ပစ်မယ်
+            # ❗ Name Error မတက်အောင် သင်္ကေတတွေ ဖျက်ပစ်မယ်
             safe_name = str(user_name).replace("[", "").replace("]", "").replace("*", "").replace("_", "").replace("`", "")
             
             user_email = user_info.get('email') or 'မရှိပါ'
@@ -422,6 +422,9 @@ def handle_callbacks(call):
                 username_str = f"@{tg_username}"
             else:
                 username_str = user_info.get('username', 'မရှိပါ')
+                
+            # ❗ Username တွင် _ ပါလာလျှင် Markdown error တက်ပြီး gp ထဲစာမရောက်တာကို ကာကွယ်ရန် \_ ဖြင့်ပြောင်းပေးခြင်း
+            safe_username = str(username_str).replace("_", "\\_")
             
             # ❗ User spam အခါခါမနှိပ်နိုင်အောင် Keyboard Button ကို ဖျောက်လိုက်မယ်
             try:
@@ -437,47 +440,13 @@ def handle_callbacks(call):
                 f"⚠️ 🔔 *🚨 COIN NOT RECEIVED ALERT 🚨*\n\n"
                 f"👤 *Name:* {safe_name}\n"
                 f"🆔 *TG ID:* `{target_user_id}`\n"
-                f"💎 *TG Username:* {username_str}\n"
+                f"💎 *TG Username:* {safe_username}\n"
                 f"📧 *Email:* `{user_email}`\n\n"
                 f"❗ *အထက်ပါ User သည် Coin မရရှိသေးပါ။ ပြန်လည်စစ်ဆေးပေးပါ။*"
             )
             
             try:
                 bot.send_message(ADMIN_GROUP_ID, alert_gp_text, parse_mode="Markdown", reply_markup=to_gp_markup)
-            except Exception as e:
-                logger.error(f"❌ Error sending no coin alert: {e}")
-
-        # ----- Admin Fixed -----
-        elif call.data.startswith("adm_fixed_"):
-            target_user_id = call.data.split("_")[2]
-            
-            # ❗ Loading မလည်အောင် ချက်ချင်းဖြေမယ်
-            bot.answer_callback_query(call.id, "✅ User ကို အကြောင်းကြားပြီးပါပြီ။")
-            
-            try:
-                # ❗ ဖြေရှင်းပြီးရင် ခလုတ်ကို ဖျောက်လိုက်မယ် (Admin တွေ ထပ်ခါထပ်ခါ နှိပ်တာကို ကာကွယ်ရန်)
-                orig_text = call.message.text or ""
-                updated_text = f"{orig_text}\n\n✅ ဖြေရှင်းပြီး (Fixed by {call.from_user.first_name})"
-                
-                bot.edit_message_text(
-                    text=updated_text,
-                    chat_id=ADMIN_GROUP_ID, 
-                    message_id=call.message.message_id,
-                    parse_mode=None, # Error မတက်အောင်
-                    reply_markup=None
-                )
-            except Exception as e:
-                logger.error(f"❌ Error editing message: {e}")
-            
-            apology_msg = (
-                "🥺 ━━━━━━━━━━━━━━━━━━ 🥺\n"
-                "💖 *ချစ်လှစွာသော User ခင်ဗျာ...*\n"
-                "📬 *တောင်းပန်ပါတယ်နော်။ စနစ်ပိုင်းအမှားအယွင်းကြောင့် လွဲချော်သွားလို့ပါဗျာ။*\n\n"
-                "✨ _ယခုအခါ Coins များကို သေချာပေါက် ဖြည့်သွင်းပေးပြီးဖြစ်လို့ ပြန်လည်စစ်ဆေးပေးပါဦးခင်ဗျာ။_ 🙏"
-            )
-            
-            try:
-               bot.send_message(ADMIN_GROUP_ID, alert_gp_text, parse_mode="Markdown", reply_markup=to_gp_markup)
             except Exception as e:
                 logger.error(f"❌ Error sending no coin alert: {e}")
 
