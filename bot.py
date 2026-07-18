@@ -407,8 +407,17 @@ def handle_callbacks(call):
         elif call.data.startswith("user_nocoin_"):
             target_user_id = call.data.split("_")[2]
             user_info = db.get(target_user_id, {})
-            user_name = user_info.get('name', 'Unknown')
-            user_email = user_info.get('email', 'No email')
+            
+            user_name = user_info.get('name') or call.from_user.first_name or 'Unknown'
+            user_email = user_info.get('email') or 'မရှိပါ'
+            
+            # ❗ TG Username ကို ရယူခြင်း (bot ကိုနှိပ်တဲ့ user ဆီကနေ တိုက်ရိုက်ယူမယ်)
+            tg_username = call.from_user.username
+            if tg_username:
+                username_str = f"@{tg_username}"
+            else:
+                # Database ထဲမှာရှိရင် Database ကယူမယ်
+                username_str = user_info.get('username', 'မရှိပါ')
             
             to_gp_markup = types.InlineKeyboardMarkup(row_width=1)
             btn_fixed = types.InlineKeyboardButton("✅ Confirm / Fixed", callback_data=f"adm_fixed_{target_user_id}")
@@ -416,9 +425,11 @@ def handle_callbacks(call):
             
             alert_gp_text = (
                 f"⚠️ 🔔 *🚨 COIN NOT RECEIVED ALERT 🚨*\n\n"
-                f"👤 *User:* {user_name}\n"
+                f"👤 *Name:* {user_name}\n"
+                f"🆔 *TG ID:* `{target_user_id}`\n"
+                f"💎 *TG Username:* {username_str}\n"
                 f"📧 *Email:* `{user_email}`\n\n"
-                f"❗ *သည် Coin မရရှိသေးပါ။ ပြန်လည်စစ်ဆေးပေးပါ။*"
+                f"❗ *အထက်ပါ User သည် Coin မရရှိသေးပါ။ ပြန်လည်စစ်ဆေးပေးပါ။*"
             )
             
             try:
@@ -494,7 +505,13 @@ def process_email(message):
     user_id = str(message.chat.id)
     db = load_db()
     if user_id not in db:
-        db[user_id] = {"name": message.from_user.first_name, "email": None, "task_count_today": 0}
+        # Username လွတ်မသွားအောင် process_email မှာပါ ထည့်သွင်းထားပေးပါတယ်
+        db[user_id] = {
+            "name": message.from_user.first_name, 
+            "email": None, 
+            "username": message.from_user.username or "မရှိပါ",
+            "task_count_today": 0
+        }
     db[user_id]["pending_email"] = email
     save_db(db)
         
