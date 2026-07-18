@@ -339,7 +339,7 @@ def handle_callbacks(call):
                     caption=updated_caption,
                     chat_id=ADMIN_GROUP_ID, 
                     message_id=call.message.message_id,
-                    parse_mode=None,  # ❗ ဤနေရာတွင် None ထားခြင်းဖြင့် Error လုံးဝ မတက်တော့ပါ
+                    parse_mode=None,
                     reply_markup=None
                 )
                 
@@ -382,7 +382,7 @@ def handle_callbacks(call):
                     caption=updated_caption,
                     chat_id=ADMIN_GROUP_ID, 
                     message_id=call.message.message_id,
-                    parse_mode=None, # ❗ Error မတက်အောင် ကာကွယ်ခြင်း
+                    parse_mode=None,
                     reply_markup=None
                 )
                 
@@ -405,27 +405,37 @@ def handle_callbacks(call):
 
         # ----- User No Coin -----
         elif call.data.startswith("user_nocoin_"):
+            # ❗ Button Loading ချက်ချင်းရပ်သွားအောင် ပထမဆုံး ဖြေပေးမယ်
+            bot.answer_callback_query(call.id, "✅ Admin ထံ တင်ပြပေးလိုက်ပါပြီ။", show_alert=True)
+            
             target_user_id = call.data.split("_")[2]
             user_info = db.get(target_user_id, {})
             
             user_name = user_info.get('name') or call.from_user.first_name or 'Unknown'
+            # ❗ Markdown Error မတက်အောင် သင်္ကေတတွေ ဖျက်ပစ်မယ်
+            safe_name = str(user_name).replace("[", "").replace("]", "").replace("*", "").replace("_", "").replace("`", "")
+            
             user_email = user_info.get('email') or 'မရှိပါ'
             
-            # ❗ TG Username ကို ရယူခြင်း (bot ကိုနှိပ်တဲ့ user ဆီကနေ တိုက်ရိုက်ယူမယ်)
             tg_username = call.from_user.username
             if tg_username:
                 username_str = f"@{tg_username}"
             else:
-                # Database ထဲမှာရှိရင် Database ကယူမယ်
                 username_str = user_info.get('username', 'မရှိပါ')
             
+            # ❗ User spam အခါခါမနှိပ်နိုင်အောင် Keyboard Button ကို ဖျောက်လိုက်မယ်
+            try:
+                bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=None)
+            except Exception as e:
+                logger.error(f"❌ Edit keyboard error: {e}")
+
             to_gp_markup = types.InlineKeyboardMarkup(row_width=1)
             btn_fixed = types.InlineKeyboardButton("✅ Confirm / Fixed", callback_data=f"adm_fixed_{target_user_id}")
             to_gp_markup.add(btn_fixed)
             
             alert_gp_text = (
                 f"⚠️ 🔔 *🚨 COIN NOT RECEIVED ALERT 🚨*\n\n"
-                f"👤 *Name:* {user_name}\n"
+                f"👤 *Name:* {safe_name}\n"
                 f"🆔 *TG ID:* `{target_user_id}`\n"
                 f"💎 *TG Username:* {username_str}\n"
                 f"📧 *Email:* `{user_email}`\n\n"
@@ -434,7 +444,6 @@ def handle_callbacks(call):
             
             try:
                 bot.send_message(ADMIN_GROUP_ID, alert_gp_text, parse_mode="Markdown", reply_markup=to_gp_markup)
-                bot.answer_callback_query(call.id, "✅ Admin ထံ တင်ပြပေးလိုက်ပါပြီ။", show_alert=True)
             except Exception as e:
                 logger.error(f"❌ Error sending no coin alert: {e}")
 
@@ -442,12 +451,54 @@ def handle_callbacks(call):
         elif call.data.startswith("adm_fixed_"):
             target_user_id = call.data.split("_")[2]
             
+            # ❗ Loading မလည်အောင် ချက်ချင်းဖြေမယ်
+            bot.answer_callback_query(call.id, "✅ User ကို အကြောင်းကြားပြီးပါပြီ။")
+            
             try:
+                # ❗ ဖြေရှင်းပြီးရင် ခလုတ်ကို ဖျောက်လိုက်မယ် (Admin တွေ ထပ်ခါထပ်ခါ နှိပ်တာကို ကာကွယ်ရန်)
+                orig_text = call.message.text or ""
+                updated_text = f"{orig_text}\n\n✅ ဖြေရှင်းပြီး (Fixed by {call.from_user.first_name})"
+                
                 bot.edit_message_text(
-                    f"✅ User ID {target_user_id} အတွက် Coins ပြဿနာကို ဖြေရှင်းပြီးပါပြီ။",
-                    ADMIN_GROUP_ID, 
-                    call.message.message_id,
-                    parse_mode=None # ❗ Error မတက်အောင် ကာကွယ်ခြင်း
+                    text=updated_text,
+                    chat_id=ADMIN_GROUP_ID, 
+                    message_id=call.message.message_id,
+                    parse_mode=None, # Error မတက်အောင်
+                    reply_markup=None
+                )
+            except Exception as e:
+                logger.error(f"❌ Error editing message: {e}")
+            
+            apology_msg = (
+                "🥺 ━━━━━━━━━━━━━━━━━━ 🥺\n"
+                "💖 *ချစ်လှစွာသော User ခင်ဗျာ...*\n"
+                "📬 *တောင်းပန်ပါတယ်နော်။ စနစ်ပိုင်းအမှားအယွင်းကြောင့် လွဲချော်သွားလို့ပါဗျာ။*\n\n"
+                "✨ _ယခုအခါ Coins များကို သေချာပေါက် ဖြည့်သွင်းပေးပြီးဖြစ်လို့ ပြန်လည်စစ်ဆေးပေးပါဦးခင်ဗျာ။_ 🙏"
+            )
+            
+            try:
+               bot.send_message(ADMIN_GROUP_ID, alert_gp_text, parse_mode="Markdown", reply_markup=to_gp_markup)
+            except Exception as e:
+                logger.error(f"❌ Error sending no coin alert: {e}")
+
+        # ----- Admin Fixed -----
+        elif call.data.startswith("adm_fixed_"):
+            target_user_id = call.data.split("_")[2]
+            
+            # ❗ Loading မလည်အောင် ချက်ချင်းဖြေမယ်
+            bot.answer_callback_query(call.id, "✅ User ကို အကြောင်းကြားပြီးပါပြီ။")
+            
+            try:
+                # ❗ ဖြေရှင်းပြီးရင် ခလုတ်ကို ဖျောက်လိုက်မယ် (Admin တွေ ထပ်ခါထပ်ခါ နှိပ်တာကို ကာကွယ်ရန်)
+                orig_text = call.message.text or ""
+                updated_text = f"{orig_text}\n\n✅ ဖြေရှင်းပြီး (Fixed by {call.from_user.first_name})"
+                
+                bot.edit_message_text(
+                    text=updated_text,
+                    chat_id=ADMIN_GROUP_ID, 
+                    message_id=call.message.message_id,
+                    parse_mode=None, # Error မတက်အောင်
+                    reply_markup=None
                 )
             except Exception as e:
                 logger.error(f"❌ Error editing message: {e}")
@@ -461,7 +512,6 @@ def handle_callbacks(call):
             
             try:
                 bot.send_message(int(target_user_id), apology_msg, parse_mode="Markdown")
-                bot.answer_callback_query(call.id, "✅ User ကို အကြောင်းကြားပြီးပါပြီ။")
             except Exception as e:
                 logger.error(f"❌ Error sending apology: {e}")
 
@@ -505,7 +555,6 @@ def process_email(message):
     user_id = str(message.chat.id)
     db = load_db()
     if user_id not in db:
-        # Username လွတ်မသွားအောင် process_email မှာပါ ထည့်သွင်းထားပေးပါတယ်
         db[user_id] = {
             "name": message.from_user.first_name, 
             "email": None, 
